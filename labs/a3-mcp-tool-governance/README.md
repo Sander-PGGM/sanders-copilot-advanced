@@ -43,7 +43,7 @@ sequenceDiagram
     S-->>C: {capabilities, serverInfo, instructions}
     C->>S: notifications/initialized
     C->>S: tools/list
-    S-->>C: 5 tools + inputSchema + annotations
+    S-->>C: 6 tools + inputSchema + annotations
     Note over H,C: allow-list in .mcp.json keeps 4 tools
     H->>C: model chooses calculate_projection
     C->>S: tools/call {name, arguments}
@@ -202,13 +202,14 @@ flowchart LR
    > explain_rule             readOnly=true destructive=false
    > calculate_projection     readOnly=true destructive=false
    > search_service_requests  readOnly=true destructive=false
+   > create_service_request   readOnly=false destructive=false
    > delete_member_data       readOnly=false destructive=true
    > ```
 3. Run the server's tests:
    ```bash
    npm run test:mcp
    ```
-   > 👀 **Expected:** `ℹ pass 7` · `ℹ fail 0` (including *writes tool name and argument keys — never argument values*).
+   > 👀 **Expected:** `ℹ pass 9` · `ℹ fail 0` (including *writes tool name and argument keys — never argument values*).
 
 | Look at… | Lesson |
 |---|---|
@@ -220,8 +221,8 @@ flowchart LR
 
 - [ ] `.mcp.json` exists at the repo root with a `microsoftLearn` entry under `mcpServers`
 - [ ] You expanded a **microsoftLearn** tool call in chat (or noted that the network or policy blocked it)
-- [ ] The step 2 command lists 5 tools and only `delete_member_data` has `destructive=true`
-- [ ] `npm run test:mcp` → `ℹ pass 7`
+- [ ] The step 2 command lists 6 tools and only `delete_member_data` has `destructive=true`
+- [ ] `npm run test:mcp` → `ℹ pass 9`
 
 ---
 
@@ -560,6 +561,10 @@ Example `managed-settings.json` fragment (admin-owned):
    ```
    *Hint:* `--deny-tool` always beats `--allow-tool`, even `--allow-all-tools`. Use `--additional-mcp-config @path/to/file.json` for a config that lives elsewhere, e.g. in a CI job. The A1 hook runs in the CLI too, so check `npm run audit` afterwards.
 3. **Add a safe write tool (hint only).** Add `create_service_request` to `server.ts` with `readOnlyHint:false`, `destructiveHint:false`, `idempotentHint:true` and a required `idempotencyKey`. The same key twice returns the same SR id. Add a test in `mcp/pension-rules/test/server.test.ts`. Then decide: which gates should guard it?
+
+   The included implementation creates an in-memory synthetic stub and returns `{ id: "SR-…", simulated: true }`. Keys must be non-blank strings. Repeated keys return the original result for the lifetime of the server process; restarting clears the records. It does not update seed data, search results or the API. Production writes need durable, atomic idempotency storage scoped to the authorized caller.
+
+   **Gate decision:** keep all six layers. Gate 1 validates inputs and enforces idempotency, but annotations grant no permission. Gate 2 excludes this write tool by default; expose it only in an explicitly approved write workflow. Gate 3 keeps it out of the read-only Pension Advisor. Gate 4 requires **Allow Once** after reviewing the intended write. Gate 5 should deny it by tool name in read-only workflows and audit decisions (argument keys only); the existing hook blocks deletion, not this new tool, so it needs an explicit rule before relying on it. Gate 6 restricts servers through admin-managed policy. For real writes, also enforce authentication and least-privilege authorization on the server. No allow-lists or hook policies are changed by this exercise.
 
 ---
 

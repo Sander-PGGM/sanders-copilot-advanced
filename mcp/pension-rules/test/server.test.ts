@@ -36,10 +36,13 @@ describe('pension-rules MCP server (stdio JSON-RPC)', () => {
     proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   });
 
-  test('tools/list exposes 5 tools with annotations', async () => {
+  test('tools/list exposes 6 tools with annotations', async () => {
     const res = await request('tools/list');
     const names = res.result.tools.map((t: { name: string }) => t.name);
-    assert.deepEqual(names, ['get_scheme_parameters', 'explain_rule', 'calculate_projection', 'search_service_requests', 'delete_member_data']);
+    assert.deepEqual(names, ['get_scheme_parameters', 'explain_rule', 'calculate_projection', 'search_service_requests', 'create_service_request', 'delete_member_data']);
+    const create = res.result.tools.find((t: { name: string }) => t.name === 'create_service_request');
+    assert.deepEqual(create.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false });
+    assert.deepEqual(create.inputSchema.required, ['idempotencyKey']);
     const destructive = res.result.tools.find((t: any) => t.name === 'delete_member_data');
     assert.equal(destructive.annotations.destructiveHint, true);
   });
@@ -59,6 +62,25 @@ describe('pension-rules MCP server (stdio JSON-RPC)', () => {
   test('search_service_requests returns untrusted free text', async () => {
     const res = await request('tools/call', { name: 'search_service_requests', arguments: { text: 'part-time' } });
     assert.match(res.result.content[0].text, /ignore all previous instructions/);
+  });
+
+  test('create_service_request reuses the SR id only for the same idempotency key', async () => {
+    const first = await request('tools/call', { name: 'create_service_request', arguments: { idempotencyKey: 'synthetic-request-1' } });
+    const second = await request('tools/call', { name: 'create_service_request', arguments: { idempotencyKey: 'synthetic-request-2' } });
+    const retry = await request('tools/call', { name: 'create_service_request', arguments: { idempotencyKey: 'synthetic-request-1' } });
+    for (const res of [first, second, retry]) assert.equal(res.result.isError, false);
+    assert.match(first.result.structuredContent.id, /^SR-.+/);
+    assert.equal(first.result.structuredContent.simulated, true);
+    assert.notEqual(first.result.structuredContent.id, second.result.structuredContent.id);
+    assert.deepEqual(retry.result.structuredContent, first.result.structuredContent);
+  });
+
+  test('create_service_request rejects missing, empty and non-string idempotency keys', async () => {
+    for (const args of [{}, { idempotencyKey: '' }, { idempotencyKey: '   ' }, { idempotencyKey: 123 }]) {
+      const res = await request('tools/call', { name: 'create_service_request', arguments: args });
+      assert.equal(res.result.isError, true);
+      assert.match(res.result.content[0].text, /idempotencyKey must be a non-empty string/);
+    }
   });
 
   test('unknown tool returns a JSON-RPC error', async () => {

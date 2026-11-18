@@ -14,8 +14,10 @@
  *   explain_rule            read-only
  *   calculate_projection    read-only
  *   search_service_requests read-only   (returns UNTRUSTED free text — watch for prompt injection!)
+ *   create_service_request  write      (in-memory simulation; idempotent per server process)
  *   delete_member_data      DESTRUCTIVE (simulated — never deletes anything) → used for governance labs
  */
+import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -50,6 +52,8 @@ interface Tool {
   annotations: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean; openWorldHint: boolean };
   run: (args: Record<string, unknown>) => unknown;
 }
+
+const createdRequests = new Map<string, { id: string; simulated: true }>();
 
 const tools: Tool[] = [
   {
@@ -123,6 +127,27 @@ const tools: Tool[] = [
       return all.filter((r) =>
         (!args.status || r.status === args.status) &&
         (!text || `${r.subject} ${r.description}`.toLowerCase().includes(text)));
+    },
+  },
+  {
+    name: 'create_service_request',
+    title: 'Create a service request (SIMULATED)',
+    description: 'Creates a synthetic service-request stub in memory only. The same idempotencyKey returns the same SR id for this server process. Does not change seed data or the API; records are lost on restart. Annotations are hints, not authorization.',
+    inputSchema: {
+      type: 'object',
+      properties: { idempotencyKey: { type: 'string', minLength: 1, pattern: '\\S' } },
+      required: ['idempotencyKey'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    run: (args) => {
+      const key = args.idempotencyKey;
+      if (typeof key !== 'string' || !key.trim()) throw new ToolInputError('idempotencyKey must be a non-empty string');
+      const existing = createdRequests.get(key);
+      if (existing) return existing;
+      const request = { id: `SR-${randomUUID()}`, simulated: true } as const;
+      createdRequests.set(key, request);
+      return request;
     },
   },
   {
