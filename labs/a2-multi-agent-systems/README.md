@@ -240,17 +240,17 @@ You are a senior TypeScript developer on the Contoso Pension Platform.
 2. Implement exactly the approved plan. No extra features, no refactoring outside the plan, no new dependencies (ADR-0001).
 3. Business rules live only in `api/src/domain/` (ADR-0003). API errors use the error envelope (ADR-0002).
 4. Add or update tests with `node:test` in `api/test/`. Update `api/openapi.yaml` when the API contract changes.
-5. Run `npm test`. The only commands you may run are `npm test`, `git status` and `git diff`.
+5. Run `npm run test:api` when it is included in the approved plan, then run `npm test` before stopping. The only commands you may run are `npm run test:api`, `npm test`, `git status` and `git diff`.
 6. Never change `.github/`, `infra/`, `data/seed/` or `.env*`. Never commit, push or delete files.
 
 ## Stop condition
-- Stop when `npm test` passes.
+- Stop when `npm test` and every planned test command pass.
 - Stop after 3 failed `npm test` runs. Do not try a fourth time; report what fails instead.
 
 ## Output contract
 1. **Status** — ✅ green, or ❌ failed after N attempts.
 2. **Changed files** — table: File | What changed.
-3. **Test result** — the summary lines of the last `npm test` run (tests, pass, fail).
+3. **Test result** — the summary lines for each test command run (tests, pass, fail).
 4. **Deviations from the plan** — "None", or a list with the reason for each.
 ```
 
@@ -301,7 +301,16 @@ You coordinate specialists and talk to the human. You never edit files or run co
 
 ## Workflow — follow these steps in order and track them in the todo list
 1. **Research.** Use the "Pension Analyst" subagent. Give it the backlog item and ask for its memo.
-2. **Plan, then STOP.** Write a numbered implementation plan from the memo: files to change, behaviour per acceptance criterion, existing tests to update, new tests, OpenAPI changes, risks.
+2. **Plan, then STOP.** Write a numbered implementation plan from the memo: files to change, behaviour per acceptance criterion, existing tests to update, new tests, OpenAPI changes, risks, and test commands. Include this API test table:
+
+   | Input | Expected result | Acceptance criterion |
+   |---|---|---|
+   | M-1004 at age 63 | `earlyRetirementReduction` is `0.325` | BL-02 projection |
+   | M-1004 at age 59 | HTTP 422 | Reject below minimum age |
+   | M-1004 at age 69 | HTTP 422 | Reject above maximum age |
+   | M-1006 at age 63 | HTTP 422 | Reject below current age |
+
+   If the plan calls for `npm run test:api`, also include `npm test`.
    End your message with: `⏸️ Human gate — reply "approved" to start implementation, or tell me what to change.`
    Then end your turn. Do not continue until the human replies "approved". If the human asks for changes, revise the plan and stop again.
 3. **Implement.** Use the "Implementer" subagent. Pass the approved plan word for word and the acceptance criteria.
@@ -365,7 +374,7 @@ sequenceDiagram
     L-->>H: plan + ⏸️ human gate
     H->>L: approved
     L->>I: approved plan
-    I->>H: approve edits / npm test (Manual)
+    I->>H: approve edits / planned tests (Manual)
     I-->>L: changed files + test result
     L->>R: review
     R-->>L: findings table
@@ -404,7 +413,10 @@ sequenceDiagram
    | stop accrual at the early retirement date? | ☐ |
    | reduce by 6.5 % × (68 − age) (63 → 0.325)? | ☐ |
    | add `earlyRetirementReduction` and `unreducedAnnualPension`? | ☐ |
-   | return 422 for < 60, > 68 and below the current age? | ☐ |
+   | expect M-1004 at age 63 → `earlyRetirementReduction: 0.325`? | ☐ |
+   | expect M-1004 at ages 59 and 69 → HTTP 422 for each? | ☐ |
+   | expect M-1006 at age 63 → HTTP 422? | ☐ |
+   | include `npm run test:api` if planned and `npm test`? | ☐ |
    | update the 2 **existing** tests that expect early retirement to be rejected? | ☐ |
    | add unit + API tests and update `api/openapi.yaml`? | ☐ |
 
@@ -413,7 +425,7 @@ sequenceDiagram
    ```text
    approved
    ```
-4. Approve tool calls **one by one** as they appear: read each diff; choose **Allow Once** for `npm test`. Never choose *Allow all*.
+4. Approve tool calls **one by one** as they appear: read each diff; choose **Allow Once** for each planned test command (`npm run test:api` and/or `npm test`). Never choose *Allow all*.
 
 > 👀 **Expected:** the Implementer subagent edits `api/src/domain/pension.ts` and tests, runs `npm test` (max 3×), then the Reviewer subagent returns a findings table. The lead ends with a criteria table (✅/❌), test counts and open findings.
 > ⚠️ **If not:** the lead starts coding without waiting → stop the response, reply `You skipped the human gate. Show the plan and wait.` It names a subagent that doesn't exist → check the exact `name:` values (Step 4).

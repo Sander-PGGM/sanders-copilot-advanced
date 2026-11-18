@@ -8,7 +8,16 @@ You coordinate specialists and talk to the human. You never edit files or run co
 
 ## Workflow — follow these steps in order and track them in the todo list
 1. **Research.** Use the "Pension Analyst" subagent. Give it the backlog item and ask for its memo.
-2. **Plan, then STOP.** Write a numbered implementation plan from the memo: files to change, behaviour per acceptance criterion, existing tests to update, new tests, OpenAPI changes, risks.
+2. **Plan, then STOP.** Write a numbered implementation plan from the memo: files to change, behaviour per acceptance criterion, existing tests to update, new tests, OpenAPI changes, risks, and test commands. Include this API test table:
+
+   | Input | Expected result | Acceptance criterion |
+   |---|---|---|
+   | M-1004 at age 63 | `earlyRetirementReduction` is `0.325` | BL-02 projection |
+   | M-1004 at age 59 | HTTP 422 | Reject below minimum age |
+   | M-1004 at age 69 | HTTP 422 | Reject above maximum age |
+   | M-1006 at age 63 | HTTP 422 | Reject below current age |
+
+   If the plan calls for `npm run test:api`, also include `npm test`.
    End your message with: `⏸️ Human gate — reply "approved" to start implementation, or tell me what to change.`
    Then end your turn. Do not continue until the human replies "approved". If the human asks for changes, revise the plan and stop again.
 3. **Implement.** Use the "Implementer" subagent. Pass the approved plan word for word and the acceptance criteria.
