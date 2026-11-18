@@ -42,12 +42,60 @@ test('projection at the standard retirement age adds future accrual', () => {
   });
   assert.equal(result.yearsToRetirement, 14);
   assert.equal(result.futureAccrual, 8_441.44);
+  assert.equal(result.earlyRetirementReduction, 0);
+  assert.equal(result.unreducedAnnualPension, 13_441.44);
   assert.equal(result.projectedAnnualPension, 13_441.44);
   assert.equal(result.retirementDate, '2040-04-15');
 });
 
-test('projection rejects early retirement (not supported yet)', () => {
-  assert.throws(() => projectPension({
-    birthDate: '1972-04-15', fullTimeSalary: 52_000, partTimeFactor: 1, accruedToDate: 0, asOf: '2026-11-18', retirementAge: 63,
-  }), /early retirement is not supported/);
+test('R5 projection stops accrual at 63 and reduces the whole pension', () => {
+  const result = projectPension({
+    birthDate: '1966-06-30', fullTimeSalary: 98_000, partTimeFactor: 0.8,
+    accruedToDate: 10_423.70, asOf: '2026-11-18', retirementAge: 63,
+  });
+  assert.equal(result.retirementDate, '2029-06-30');
+  assert.equal(result.yearsToRetirement, 3);
+  assert.equal(result.futureAccrual, 3_379.11);
+  assert.equal(result.unreducedAnnualPension, 13_802.81);
+  assert.equal(result.earlyRetirementReduction, 0.325);
+  assert.equal(result.projectedAnnualPension, 9_316.90);
+});
+
+test('R5 accepts ages 60 and 68 and rejects out-of-range and non-integer ages', () => {
+  const input = {
+    birthDate: '1980-01-01', fullTimeSalary: 52_000, partTimeFactor: 1,
+    accruedToDate: 5_000, asOf: '2026-11-18',
+  };
+  assert.equal(projectPension({ ...input, retirementAge: 60 }).earlyRetirementReduction, 0.52);
+  assert.equal(projectPension({ ...input, retirementAge: 68 }).earlyRetirementReduction, 0);
+  for (const retirementAge of [59, 69, 60.5]) {
+    assert.throws(() => projectPension({ ...input, retirementAge }), /retirementAge must be an integer between 60 and 68/);
+  }
+});
+
+test('R5 accepts current age even after the birthday and rejects ages below it', () => {
+  const input = {
+    birthDate: '1963-06-30', fullTimeSalary: 52_000, partTimeFactor: 1,
+    accruedToDate: 5_000, asOf: '2026-11-18',
+  };
+  const result = projectPension({ ...input, retirementAge: 63 });
+  assert.equal(result.yearsToRetirement, 0);
+  assert.equal(result.futureAccrual, 0);
+  assert.equal(result.retirementDate, '2026-06-30');
+  assert.equal(result.unreducedAnnualPension, 5_000);
+  assert.equal(result.projectedAnnualPension, 3_375);
+  assert.throws(() => projectPension({ ...input, retirementAge: 62 }), /below current age/);
+  assert.throws(() => projectPension({ ...input, birthDate: '1957-06-30' }), /below current age/);
+});
+
+test('R5 applies salary growth only to years before early retirement', () => {
+  const result = projectPension({
+    birthDate: '1969-04-15', fullTimeSalary: 52_000, partTimeFactor: 1,
+    accruedToDate: 5_000, asOf: '2026-11-18', retirementAge: 60, salaryGrowthRate: 0.02,
+  });
+  assert.equal(result.yearsToRetirement, 3);
+  assert.equal(result.futureAccrual, 1_863.85);
+  assert.equal(result.unreducedAnnualPension, 6_863.85);
+  assert.equal(result.earlyRetirementReduction, 0.52);
+  assert.equal(result.projectedAnnualPension, 3_294.65);
 });

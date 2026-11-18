@@ -49,17 +49,92 @@ describe('Contoso API', () => {
     assert.equal(statement.currentYearAccrual, 602.96);
   });
 
+  test('GET /api/members/:id/statement validates calendar dates before applying R5', async () => {
+    for (const asOf of ['2026-99-99', '2026-02-29', '2026-04-31', '2028-11-31', '2026-1-01', '']) {
+      const res = await api.get(`/api/members/M-1006/statement?asOf=${asOf}`);
+      assert.equal(res.status, 400, asOf);
+      assert.deepEqual(await res.json(), {
+        error: { code: 'BAD_REQUEST', message: 'asOf must be an ISO date (YYYY-MM-DD)' },
+      });
+    }
+    const res = await api.get('/api/members/M-1001/statement?asOf=2024-02-29');
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).asOf, '2024-02-29');
+  });
+
   test('POST /api/projections projects at the standard retirement age', async () => {
     const res = await api.post('/api/projections', { memberId: 'M-1001' });
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.retirementAge, 68);
     assert.ok(body.projectedAnnualPension > body.accruedToDate);
+    assert.equal(body.earlyRetirementReduction, 0);
+    assert.equal(body.projectedAnnualPension, body.unreducedAnnualPension);
   });
 
-  test('POST /api/projections returns 422 for early retirement (backlog)', async () => {
+  test('POST /api/projections applies R5 to M-1004 at 63', async () => {
     const res = await api.post('/api/projections', { memberId: 'M-1004', retirementAge: 63 });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.retirementDate, '2029-06-30');
+    assert.equal(body.yearsToRetirement, 3);
+    assert.equal(body.futureAccrual, 3_379.11);
+    assert.equal(body.unreducedAnnualPension, 13_802.81);
+    assert.equal(body.earlyRetirementReduction, 0.325);
+    assert.equal(body.projectedAnnualPension, 9_316.90);
+  });
+
+  test('POST /api/projections enforces R5 age boundaries with the 422 envelope', async () => {
+    for (const [memberId, retirementAge, message] of [
+      ['M-1004', 59, 'retirementAge must be an integer between 60 and 68'],
+      ['M-1002', 59, 'retirementAge must be an integer between 60 and 68'],
+      ['M-1004', 69, 'retirementAge must be an integer between 60 and 68'],
+      ['M-1006', 63, 'retirementAge must not be below current age'],
+    ] as const) {
+      const res = await api.post('/api/projections', { memberId, retirementAge });
+      assert.equal(res.status, 422);
+      assert.deepEqual(await res.json(), { error: { code: 'UNPROCESSABLE', message } });
+    }
+    for (const retirementAge of [60, 68]) {
+      const res = await api.post('/api/projections', { memberId: 'M-1002', retirementAge });
+      assert.equal(res.status, 200);
+      assert.equal((await res.json()).retirementAge, retirementAge);
+    }
+  });
+
+  test('POST /api/projections rejects malformed retirement ages with the 400 envelope', async () => {
+    for (const retirementAge of [63.5, '63', null]) {
+      const res = await api.post('/api/projections', { memberId: 'M-1004', retirementAge });
+      assert.equal(res.status, 400);
+      assert.deepEqual(await res.json(), {
+        error: { code: 'BAD_REQUEST', message: 'Invalid projection request', details: ['retirementAge must be an integer'] },
+      });
+    }
+  });
+
+  test('GET /api/members/:id/statement returns the R5 envelope when older than 68', async () => {
+    const at68 = await api.get('/api/members/M-1006/statement?asOf=2028-11-04');
+    assert.equal(at68.status, 200);
+    assert.equal((await at68.json()).age, 68);
+    const res = await api.get('/api/members/M-1006/statement?asOf=2028-11-05');
     assert.equal(res.status, 422);
+    assert.deepEqual(await res.json(), {
+      error: { code: 'UNPROCESSABLE', message: 'retirementAge must not be below current age' },
+    });
+  });
+
+  test('POST /api/projections accepts current age and rejects the age immediately below it', async () => {
+    const current = await api.post('/api/projections', { memberId: 'M-1006', retirementAge: 67 });
+    assert.equal(current.status, 200);
+    const projection = await current.json();
+    assert.equal(projection.yearsToRetirement, 0);
+    assert.equal(projection.futureAccrual, 0);
+    assert.equal(projection.earlyRetirementReduction, 0.065);
+    const below = await api.post('/api/projections', { memberId: 'M-1006', retirementAge: 66 });
+    assert.equal(below.status, 422);
+    assert.deepEqual(await below.json(), {
+      error: { code: 'UNPROCESSABLE', message: 'retirementAge must not be below current age' },
+    });
   });
 
   test('POST /api/projections validates the body', async () => {
