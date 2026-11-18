@@ -74,6 +74,27 @@ paths:
       responses:
         '200': { description: Employer }
         '404': { $ref: '#/components/responses/NotFound' }
+  /api/employers/{id}/contributions:
+    get:
+      tags: [employers]
+      summary: Sum recorded contributions for an employer and year
+      description: >
+        Uses the existing member employer association and stored history amounts,
+        summed to cents without recalculating contributions. Counts distinct members
+        with any history row for the year, including zero amounts. Years without rows return zeros.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, example: E-200 } }
+        - name: year
+          in: query
+          required: true
+          description: Supply exactly once as four digits, from 0001 through 9999.
+          schema: { type: string, pattern: '^(?!0000)[0-9]{4}(?![\s\S])', example: '2025' }
+      responses:
+        '200':
+          description: Contribution summary
+          content: { application/json: { schema: { $ref: '#/components/schemas/EmployerContributionSummary' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/projections:
     post:
       tags: [projections]
@@ -177,6 +198,15 @@ components:
         accrual: { type: number }
         employerContribution: { type: number }
         employeeContribution: { type: number }
+    EmployerContributionSummary:
+      type: object
+      required: [employerId, year, employerContribution, employeeContribution, memberCount]
+      properties:
+        employerId: { type: string, example: E-200 }
+        year: { type: integer, minimum: 1, maximum: 9999, example: 2025 }
+        employerContribution: { type: number, example: 33902.39 }
+        employeeContribution: { type: number, example: 22601.59 }
+        memberCount: { type: integer, minimum: 0, example: 3, description: 'Distinct members with a history row, including zero-valued rows.' }
     Statement:
       type: object
       properties:

@@ -55,7 +55,7 @@ export function createApp(options: AppOptions = {}): Server {
   const router = new Router();
   registerHealthRoutes(router, new Date());
   registerMemberRoutes(router, { members, contributions, statements, today });
-  registerEmployerRoutes(router, { employers, members });
+  registerEmployerRoutes(router, { employers, members, contributions });
   registerProjectionRoutes(router, { members, projections, today });
   registerServiceRequestRoutes(router, { members, requests, today });
 

@@ -6,6 +6,12 @@ interface ContributionRow {
   pensionable_salary: number; accrual: number; employer_contribution: number; employee_contribution: number;
 }
 
+interface EmployerContributionSummary {
+  employerContribution: number;
+  employeeContribution: number;
+  memberCount: number;
+}
+
 const toContribution = (r: ContributionRow): Contribution => ({
   memberId: r.member_id,
   year: r.year,
@@ -30,5 +36,17 @@ export class ContributionRepository {
     const row = this.db.prepare('SELECT COALESCE(SUM(accrual), 0) AS total FROM contributions WHERE member_id = ?')
       .get(memberId) as { total: number };
     return row.total;
+  }
+
+  summarizeByEmployer(employerId: string, year: number): EmployerContributionSummary {
+    const row = this.db.prepare(`
+      SELECT ROUND(COALESCE(SUM(c.employer_contribution), 0), 2) AS employerContribution,
+             ROUND(COALESCE(SUM(c.employee_contribution), 0), 2) AS employeeContribution,
+             COUNT(DISTINCT c.member_id) AS memberCount
+      FROM contributions c
+      JOIN members m ON m.id = c.member_id
+      WHERE m.employer_id = ? AND c.year = ?
+    `).get(employerId, year) as unknown as EmployerContributionSummary;
+    return { ...row };
   }
 }
