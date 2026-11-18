@@ -5,6 +5,7 @@ const $ = (sel) => document.querySelector(sel);
 
 let employers = new Map();
 let selectedMember = null;
+let memberRequest = 0;
 
 async function api(path, options) {
   const res = await fetch(path, options);
@@ -31,33 +32,56 @@ async function loadMembers() {
 }
 
 async function showMember(id) {
-  selectedMember = await api(`/api/members/${id}`);
-  const [statement, contributions] = await Promise.all([
-    api(`/api/members/${id}/statement`),
-    api(`/api/members/${id}/contributions`),
-  ]);
-  $('#member-detail').hidden = false;
-  $('#detail-title').textContent = `${selectedMember.firstName} ${selectedMember.lastName} · ${id}`;
-  const card = (label, value) => `<div class="card"><span>${label}</span><strong>${value}</strong></div>`;
-  $('#statement-cards').innerHTML = [
-    card('Age', statement.age),
-    card('Years of service', statement.yearsOfService),
-    card('Accrued pension / year', euro.format(statement.accruedPension)),
-    card('Pensionable salary (current)', euro.format(statement.currentPensionableSalary)),
-    card('Accrual this year', euro.format(statement.currentYearAccrual)),
-    card(`Projected at ${statement.retirementDate}`, euro.format(statement.projectedPensionAtRetirement)),
-  ].join('');
-  $('#retirement-age').innerHTML = [60, 61, 62, 63, 64, 65, 66, 67, 68]
-    .map((a) => `<option value="${a}" ${a === 68 ? 'selected' : ''}>${a}</option>`).join('');
+  const request = ++memberRequest;
+  selectedMember = null;
+  $('#member-detail').hidden = true;
+  $('#detail-title').textContent = '';
+  $('#statement-cards').innerHTML = '';
+  $('#contributions-table tbody').innerHTML = '';
   $('#projection-result').textContent = '';
-  $('#contributions-table tbody').innerHTML = contributions.map((c) => `
-    <tr><td>${c.year}</td><td>${euro.format(c.fullTimeSalary)}</td><td>${pct(c.partTimeFactor)}</td>
-    <td>${euro.format(c.pensionableSalary)}</td><td>${euro.format(c.accrual)}</td>
-    <td>${euro.format(c.employerContribution)}</td><td>${euro.format(c.employeeContribution)}</td></tr>`).join('');
+  $('#projection-result').className = 'result';
+  const status = $('#member-status');
+  status.hidden = false;
+  status.className = 'panel';
+  status.textContent = `Loading member ${id}…`;
+  try {
+    const member = await api(`/api/members/${id}`);
+    if (request !== memberRequest) return;
+    const [statement, contributions] = await Promise.all([
+      api(`/api/members/${id}/statement`),
+      api(`/api/members/${id}/contributions`),
+    ]);
+    if (request !== memberRequest) return;
+    $('#detail-title').textContent = `${member.firstName} ${member.lastName} · ${id}`;
+    const card = (label, value) => `<div class="card"><span>${label}</span><strong>${value}</strong></div>`;
+    $('#statement-cards').innerHTML = [
+      card('Age', statement.age),
+      card('Years of service', statement.yearsOfService),
+      card('Accrued pension / year', euro.format(statement.accruedPension)),
+      card('Pensionable salary (current)', euro.format(statement.currentPensionableSalary)),
+      card('Accrual this year', euro.format(statement.currentYearAccrual)),
+      card(`Projected at ${statement.retirementDate}`, euro.format(statement.projectedPensionAtRetirement)),
+    ].join('');
+    $('#retirement-age').innerHTML = [60, 61, 62, 63, 64, 65, 66, 67, 68]
+      .map((a) => `<option value="${a}" ${a === 68 ? 'selected' : ''}>${a}</option>`).join('');
+    $('#contributions-table tbody').innerHTML = contributions.map((c) => `
+      <tr><td>${c.year}</td><td>${euro.format(c.fullTimeSalary)}</td><td>${pct(c.partTimeFactor)}</td>
+      <td>${euro.format(c.pensionableSalary)}</td><td>${euro.format(c.accrual)}</td>
+      <td>${euro.format(c.employerContribution)}</td><td>${euro.format(c.employeeContribution)}</td></tr>`).join('');
+    selectedMember = member;
+    status.hidden = true;
+    $('#member-detail').hidden = false;
+  } catch (err) {
+    if (request !== memberRequest) return;
+    status.className = 'panel result error';
+    status.textContent = `Failed to load member ${id}: ${err.message}`;
+  }
 }
 
 async function project(event) {
   event.preventDefault();
+  if (!selectedMember) return;
+  const request = memberRequest;
   const out = $('#projection-result');
   try {
     const result = await api('/api/projections', {
@@ -69,9 +93,11 @@ async function project(event) {
         salaryGrowthRate: Number($('#salary-growth').value),
       }),
     });
+    if (request !== memberRequest) return;
     out.className = 'result ok';
-    out.textContent = `Projected yearly pension at ${result.retirementAge} (${result.retirementDate}): ${euro.format(result.projectedAnnualPension)} — accrued ${euro.format(result.accruedToDate)} + future ${euro.format(result.futureAccrual)}`;
+    out.textContent = `Projected yearly pension at ${result.retirementAge} (${result.retirementDate}): ${euro.format(result.projectedAnnualPension)} — accrued ${euro.format(result.accruedToDate)} + future ${euro.format(result.futureAccrual)} = ${euro.format(result.unreducedAnnualPension)} before ${(result.earlyRetirementReduction * 100).toLocaleString('nl-NL', { maximumFractionDigits: 2 })}% early-retirement reduction`;
   } catch (err) {
+    if (request !== memberRequest) return;
     out.className = 'result error';
     out.textContent = `Projection failed: ${err.message}`;
   }
