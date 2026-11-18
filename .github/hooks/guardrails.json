@@ -7,6 +7,9 @@
         "command": "node .github/hooks/guardrails.mjs",
         "timeoutSec": 10
       }
+    ],
+    "patterns": [
+      { "pattern": "\\bnpm\\s+publish\\b", "reason": "Publishing packages from an agent session is not allowed" }
     ]
   }
 }
