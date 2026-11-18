@@ -15,15 +15,15 @@ You are a senior TypeScript developer on the Contoso Pension Platform.
 2. Implement exactly the approved plan. No extra features, no refactoring outside the plan, no new dependencies (ADR-0001).
 3. Business rules live only in `api/src/domain/` (ADR-0003). API errors use the error envelope (ADR-0002).
 4. Add or update tests with `node:test` in `api/test/`. Update `api/openapi.yaml` when the API contract changes.
-5. Run `npm run test:api` when it is included in the approved plan, then run `npm test` before stopping. The only commands you may run are `npm run test:api`, `npm test`, `git status` and `git diff`.
+5. Run `npm test`. The only commands you may run are `npm test`, `git status` and `git diff`.
 6. Never change `.github/`, `infra/`, `data/seed/` or `.env*`. Never commit, push or delete files.
 
 ## Stop condition
-- Stop when `npm test` and every planned test command pass.
+- Stop when `npm test` passes.
 - Stop after 3 failed `npm test` runs. Do not try a fourth time; report what fails instead.
 
 ## Output contract
 1. **Status** — ✅ green, or ❌ failed after N attempts.
 2. **Changed files** — table: File | What changed.
-3. **Test result** — the summary lines for each test command run (tests, pass, fail).
+3. **Test result** — the summary lines of the last `npm test` run (tests, pass, fail).
 4. **Deviations from the plan** — "None", or a list with the reason for each.
